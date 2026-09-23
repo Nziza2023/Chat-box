@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 255 255 255;
+  --bg-soft: 246 247 249;
+  --text: 17 24 39;
+  --text-soft: 107 114 128;
+  --border: 229 231 235;
+  --bubble-mine: 43 127 255;
+  --bubble-theirs: 241 242 245;
+}
+
+.dark {
+  --bg: 15 17 21;
+  --bg-soft: 24 27 33;
+  --text: 237 239 242;
+  --text-soft: 156 163 175;
+  --border: 39 42 49;
+  --bubble-mine: 43 127 255;
+  --bubble-theirs: 33 36 43;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background-color: rgb(var(--bg));
+  color: rgb(var(--text));
+}
+
+/* Thin, unobtrusive scrollbars for the message list and sidebar */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 9999px;
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-4px);
+  }
+}
+.typing-dot {
+  animation: typing-bounce 1.2s infinite;
+}

@@ -1,0 +1,261 @@
+// ============================================================
+// Prisma schema for the real-time chat application
+// Run `npx prisma migrate dev --name init` after setting DATABASE_URL
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  SYSTEM
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum MemberRole {
+  MEMBER
+  ADMIN
+  OWNER
+}
+
+enum NotificationType {
+  NEW_MESSAGE
+  MESSAGE_REACTION
+  MENTION
+  ADDED_TO_GROUP
+}
+
+// ------------------------------------------------------------
+// USER
+// ------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  bio          String?  @default("")
+  avatarUrl    String?
+
+  isOnline     Boolean  @default(false)
+  lastSeenAt   DateTime @default(now())
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  memberships       ConversationMember[]
+  sentMessages      Message[]              @relation("SentMessages")
+  reactions         MessageReaction[]
+  refreshTokens     RefreshToken[]
+  notifications     Notification[]         @relation("UserNotifications")
+  triggeredNotifs   Notification[]         @relation("ActorNotifications")
+  messageReadStates MessageReadState[]
+
+  @@index([username])
+  @@index([email])
+  @@map("users")
+}
+
+// ------------------------------------------------------------
+// AUTH — refresh token / session tracking
+// ------------------------------------------------------------
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userAgent String?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ------------------------------------------------------------
+// CONVERSATIONS
+// ------------------------------------------------------------
+
+model Conversation {
+  id        String           @id @default(uuid())
+  type      ConversationType @default(DIRECT)
+
+  // Only used for GROUP conversations
+  name      String?
+  avatarUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Denormalized pointer to the latest message, makes sidebar sorting cheap
+  lastMessageId String?  @unique
+  lastMessageAt DateTime @default(now())
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model ConversationMember {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role     MemberRole @default(MEMBER)
+  isPinned Boolean    @default(false)
+  isMuted  Boolean    @default(false)
+
+  // Per-user "delete for me" — hides history before this timestamp
+  clearedAt DateTime?
+
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_members")
+}
+
+// ------------------------------------------------------------
+// MESSAGES
+// ------------------------------------------------------------
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  content     String?
+  messageType MessageType @default(TEXT)
+
+  replyToId String?
+  replyTo   Message? @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReplies")
+
+  // "Delete for everyone" -> tombstone. Original content is wiped.
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  editedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attachments Attachment[]
+  reactions   MessageReaction[]
+  readStates  MessageReadState[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+// Tracks per-user "delivered/read" so DMs and future group chats both work
+model MessageReadState {
+  id        String   @id @default(uuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deliveredAt DateTime?
+  readAt      DateTime?
+
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@map("message_read_states")
+}
+
+model MessageReaction {
+  id        String  @id @default(uuid())
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  emoji String
+
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, emoji])
+  @@map("message_reactions")
+}
+
+// ------------------------------------------------------------
+// ATTACHMENTS (images, video, audio, files)
+// ------------------------------------------------------------
+
+model Attachment {
+  id        String  @id @default(uuid())
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  url      String
+  fileName String
+  mimeType String
+  sizeBytes Int
+  width    Int?
+  height   Int?
+  durationSeconds Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+  @@map("attachments")
+}
+
+// ------------------------------------------------------------
+// NOTIFICATIONS
+// ------------------------------------------------------------
+
+model Notification {
+  id     String            @id @default(uuid())
+  userId String
+  user   User              @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  actorId String?
+  actor   User?   @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: SetNull)
+
+  type           NotificationType
+  conversationId String?
+  messageId      String?
+  content        String?
+
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
