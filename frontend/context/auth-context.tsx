@@ -30,19 +30,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // On first load (or full page refresh), the access token in memory is gone.
   // We try to silently get a new one using the httpOnly refresh cookie.
   // If that succeeds, the user stays logged in without re-entering a password.
-  useEffect(() => {
+    useEffect(() => {
     (async () => {
-      const token = await refreshAccessToken();
-      if (token) {
-        try {
+      try {
+        const token = await refreshAccessToken();
+        if (token) {
           const me = await apiFetch<PublicUser>('/users/me');
           setUser(me);
           connectSocket();
-        } catch {
-          setAccessToken(null);
         }
+      } catch {
+        setAccessToken(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     })();
   }, []);
 
