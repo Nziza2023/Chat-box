@@ -18,11 +18,12 @@ import { LoginDto } from './dto/login.dto';
 // which protects it from XSS attacks). The short-lived access token is
 // returned in the JSON body and kept in memory on the frontend instead.
 const REFRESH_COOKIE = 'refreshToken';
+const IS_PROD = process.env.NODE_ENV === 'production';
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/auth',
+  secure: IS_PROD,
+  sameSite: (IS_PROD ? 'none' : 'lax') as 'none' | 'lax',
+  path: '/api/auth',
   maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
 };
 
@@ -64,7 +65,7 @@ export class AuthController {
     if (token) {
       await this.authService.logout(token);
     }
-    res.clearCookie(REFRESH_COOKIE, { path: '/auth' });
+    res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
     return { success: true };
   }
 }
